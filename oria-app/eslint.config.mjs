@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // Projeto do Lovable usado só como referência visual (UI_RULES.md, 8.1) — não faz parte do app.
+    "lovable-project-d217a4be/**",
   ]),
 ]);
 

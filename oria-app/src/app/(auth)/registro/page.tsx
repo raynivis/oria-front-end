@@ -16,7 +16,7 @@ export default function PaginaRegistro() {
         <FormularioRegistro />
         <p className="text-center text-sm text-muted-foreground">
           Já tem conta?{' '}
-          <Link href="/login" className="text-primary underline-offset-4 hover:underline">
+          <Link href="/login" className="font-medium text-primary hover:underline">
             Entrar
           </Link>
         </p>

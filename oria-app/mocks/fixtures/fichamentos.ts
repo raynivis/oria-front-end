@@ -1,5 +1,4 @@
-import type { FichamentoResumoDto, FichamentoSaida, FichamentoVersaoSaida } from '@/lib/api/tipos';
-import { livroMenteEDecisao } from './livros';
+import type { FichamentoSaida, FichamentoVersaoSaida } from '@/lib/api/tipos';
 
 /** Fichamento da seção inteira, já com três edições do aluno (versões 2, 3 e 4). */
 export const fichamentoSecaoFixture: FichamentoSaida = {
@@ -65,27 +64,6 @@ export const fichamentoTrechoFixture: FichamentoSaida = {
   atualizadoEm: '2026-03-03T08:00:00.000Z',
 };
 
-export const fichamentosDoAlunoFixture: FichamentoResumoDto[] = [
-  {
-    id: fichamentoSecaoFixture.id,
-    sectionId: fichamentoSecaoFixture.sectionId,
-    tituloSecao: 'Heurísticas e Vieses',
-    livroId: livroMenteEDecisao.id,
-    tituloLivro: livroMenteEDecisao.titulo,
-    trechoCfi: null,
-    origemVersaoAtual: fichamentoSecaoFixture.origemVersaoAtual,
-    editado: true,
-    atualizadoEm: fichamentoSecaoFixture.atualizadoEm,
-  },
-  {
-    id: fichamentoTrechoFixture.id,
-    sectionId: fichamentoTrechoFixture.sectionId,
-    tituloSecao: 'Heurísticas e Vieses',
-    livroId: livroMenteEDecisao.id,
-    tituloLivro: livroMenteEDecisao.titulo,
-    trechoCfi: fichamentoTrechoFixture.trechoCfi,
-    origemVersaoAtual: fichamentoTrechoFixture.origemVersaoAtual,
-    editado: false,
-    atualizadoEm: fichamentoTrechoFixture.atualizadoEm,
-  },
+export const fichamentoTrechoVersoesFixture: FichamentoVersaoSaida[] = [
+  { numero: 1, origem: 'ia', conteudo: fichamentoTrechoFixture.conteudo, criadoEm: fichamentoTrechoFixture.criadoEm },
 ];

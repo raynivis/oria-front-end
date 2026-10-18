@@ -3,24 +3,27 @@ import type {
   ConjuntoSaida,
   FichamentoSaida,
   FichamentoVersaoSaida,
+  MetacognicaoSaida,
+  PassoTipo,
+  ReporteSaida,
+  SessaoResumo,
   SessaoSaida,
   TentativaSaida,
 } from '@/lib/api/tipos';
 import { API_BASE_URL } from '@/lib/api/base-url';
 import { autenticar, buscarUsuarioPorToken, registrar } from './fixtures/auth';
-import { livrosFixture } from './fixtures/livros';
+import { livrosFixture, livroMenteEDecisao } from './fixtures/livros';
 import { sumarioFixture } from './fixtures/sumario';
 import { secoesFixture } from './fixtures/secoes';
 import { panoramaFixturePara } from './fixtures/panorama';
 import {
   fichamentoSecaoFixture,
   fichamentoTrechoFixture,
+  fichamentoTrechoVersoesFixture,
   fichamentoVersoesFixture,
-  fichamentosDoAlunoFixture,
 } from './fixtures/fichamentos';
 import { conceitosFixture, conceitosDoAlunoFixture } from './fixtures/conceitos';
 import { conjuntoFixture } from './fixtures/questoes';
-import { tentativaPasso1Fixture, tentativasFixture } from './fixtures/tentativas';
 import { chatSucessoFixture, chatRecusaFixture, chatErroFixture } from './fixtures/chat';
 import { respostaStreamSSE } from './sse';
 
@@ -34,16 +37,54 @@ const fichamentosPorId = new Map<string, FichamentoSaida>([
 ]);
 const versoesPorFichamentoId = new Map<string, FichamentoVersaoSaida[]>([
   [fichamentoSecaoFixture.id, fichamentoVersoesFixture],
+  [fichamentoTrechoFixture.id, fichamentoTrechoVersoesFixture],
 ]);
 let proximoIdFichamento = 3;
 
-// ---- Tentativas: transição determinística entre as fixtures de cada tela ------
+// ---- Sessões de chat: uma por seção, reaproveitada entre visitas -------------
 
-const proximaTentativaPorId: Record<string, string> = {
-  'tentativa-passo-1': 'tentativa-passo-2',
-  'tentativa-passo-2': 'tentativa-passo-3',
-  'tentativa-passo-3': 'tentativa-resolvida',
-};
+const sessoesPorSecaoId = new Map<string, SessaoSaida>();
+
+// ---- Tentativas: estado real em memória, uma por chamada de POST ------------
+
+const tentativasPorId = new Map<string, TentativaSaida>();
+let proximoIdTentativa = 1;
+let proximoIdMetacognicao = 1;
+let proximoIdReporte = 1;
+
+// ---- Progresso: derivado do que o próprio mock já registra ------------------
+
+const secoesAbertasRegistradas = new Set<string>();
+
+const DICA_CONCEITUAL_PADRAO = 'Pense no mecanismo central descrito no texto, não só no efeito que ele produz.';
+const DICA_LOCALIZADA_PADRAO = 'Releia o trecho da seção que nomeia diretamente os dois elementos da sua resposta.';
+const RESOLUCAO_PADRAO =
+  'A pergunta original costuma ser mais difícil do que a pergunta que de fato respondemos; o primeiro passo para notar a troca é nomear as duas perguntas separadamente.';
+
+function criarPasso(numero: number, tipo: PassoTipo, conteudo: string) {
+  return { numero, tipo, conteudo, criadoEm: new Date().toISOString() };
+}
+
+/** Mesma lógica de diferença por parágrafo que o front usa para a marcação visual (UI_RULES.md, 4.2). */
+function calcularProporcaoAluno(
+  conteudoAtual: string,
+  versoes: FichamentoVersaoSaida[],
+): { caracteresIa: number; caracteresAluno: number; proporcaoAluno: number } {
+  const versaoBaseIA = [...versoes].sort((a, b) => a.numero - b.numero).find((v) => v.origem === 'ia');
+  const paragrafosBase = versaoBaseIA ? versaoBaseIA.conteudo.split('\n\n') : [];
+  const paragrafosAtuais = conteudoAtual.split('\n\n');
+
+  let caracteresIa = 0;
+  let caracteresAluno = 0;
+  paragrafosAtuais.forEach((paragrafo, indice) => {
+    if (paragrafo === paragrafosBase[indice]) caracteresIa += paragrafo.length;
+    else caracteresAluno += paragrafo.length;
+  });
+
+  const total = caracteresIa + caracteresAluno;
+  return { caracteresIa, caracteresAluno, proporcaoAluno: total === 0 ? 0 : caracteresAluno / total };
+}
+
 
 export const handlers = [
   // ---- Autenticação -----------------------------------------------------------
@@ -134,15 +175,17 @@ export const handlers = [
       return HttpResponse.json({ message: 'Fichamento não encontrado.', statusCode: 404 }, { status: 404 });
     }
     const { conteudo } = (await request.json()) as { conteudo: string };
+    const versoesAnteriores = versoesPorFichamentoId.get(id) ?? [];
     const atualizado: FichamentoSaida = {
       ...atual,
       conteudo,
       numeroVersaoAtual: atual.numeroVersaoAtual + 1,
       origemVersaoAtual: 'aluno',
       atualizadoEm: new Date().toISOString(),
+      ...calcularProporcaoAluno(conteudo, versoesAnteriores),
     };
     fichamentosPorId.set(id, atualizado);
-    const versoes = versoesPorFichamentoId.get(id) ?? [];
+    const versoes = versoesAnteriores;
     versoesPorFichamentoId.set(id, [
       ...versoes,
       { numero: atualizado.numeroVersaoAtual, origem: 'aluno', conteudo, criadoEm: atualizado.atualizadoEm },
@@ -163,7 +206,22 @@ export const handlers = [
     return new HttpResponse(null, { status: 204 });
   }),
 
-  http.get(rota('/me/fichamentos'), () => HttpResponse.json(fichamentosDoAlunoFixture)),
+  http.get(rota('/me/fichamentos'), () => {
+    const lista = Array.from(fichamentosPorId.values())
+      .sort((a, b) => b.atualizadoEm.localeCompare(a.atualizadoEm))
+      .map((fichamento) => ({
+        id: fichamento.id,
+        sectionId: fichamento.sectionId,
+        tituloSecao: secoesFixture[fichamento.sectionId]?.titulo ?? fichamento.sectionId,
+        livroId: livroMenteEDecisao.id,
+        tituloLivro: livroMenteEDecisao.titulo,
+        trechoCfi: fichamento.trechoCfi,
+        origemVersaoAtual: fichamento.origemVersaoAtual,
+        editado: fichamento.numeroVersaoAtual > 1,
+        atualizadoEm: fichamento.atualizadoEm,
+      }));
+    return HttpResponse.json(lista);
+  }),
 
   http.get(rota('/me/fichamentos/exportar'), ({ request }) => {
     const formato = new URL(request.url).searchParams.get('formato') ?? 'md';
@@ -179,15 +237,67 @@ export const handlers = [
   // ---- Telemetria -------------------------------------------------------------
 
   http.post(rota('/eventos'), async ({ request }) => {
-    const corpo = (await request.json()) as { eventos: unknown[] };
+    const corpo = (await request.json()) as { eventos: Array<{ tipo: string; sectionId?: string }> };
     const quantidade = corpo.eventos?.length ?? 0;
+    for (const evento of corpo.eventos ?? []) {
+      if (evento.tipo === 'abriu' && evento.sectionId) secoesAbertasRegistradas.add(evento.sectionId);
+    }
     return HttpResponse.json({ recebidos: quantidade, gravados: quantidade });
+  }),
+
+  http.get(rota('/me/progresso'), () => {
+    const fichamentos = Array.from(fichamentosPorId.values());
+    return HttpResponse.json({
+      secoesAbertas: secoesAbertasRegistradas.size,
+      fichamentos: {
+        total: fichamentos.length,
+        comEdicaoDoAluno: fichamentos.filter((f) => f.numeroVersaoAtual > 1).length,
+      },
+    });
   }),
 
   // ---- Conceitos ----------------------------------------------------------
 
   http.get(rota('/secoes/:id/conceitos'), () => HttpResponse.json(conceitosFixture)),
   http.get(rota('/me/conceitos'), () => HttpResponse.json(conceitosDoAlunoFixture)),
+
+  // ---- Metacognição e reportes ------------------------------------------------
+
+  /** Sem dados reais de desempenho no mock: usa a própria confiança declarada como sinal. */
+  http.post(rota('/secoes/:id/metacognicao'), async ({ params, request }) => {
+    const secaoId = params.id as string;
+    const corpo = (await request.json()) as { oQueAprendi: string; oQueDuvido: string; confianca: number };
+    const secao = secoesFixture[secaoId];
+    const sinalizouIlusao = corpo.confianca >= 70;
+
+    const metacognicao: MetacognicaoSaida = {
+      id: `metacognicao-${proximoIdMetacognicao++}`,
+      sectionId: secaoId,
+      tituloSecao: secao?.titulo ?? 'Seção',
+      oQueAprendi: corpo.oQueAprendi,
+      oQueDuvido: corpo.oQueDuvido,
+      confianca: corpo.confianca,
+      observacaoIa: sinalizouIlusao
+        ? `Você declarou confiança de ${corpo.confianca}%, mas precisou dos três passos em boa parte das questões desta seção.`
+        : null,
+      sinalizouIlusao,
+      criadoEm: new Date().toISOString(),
+    };
+    return HttpResponse.json(metacognicao, { status: 201 });
+  }),
+
+  http.post(rota('/reportes'), async ({ request }) => {
+    const corpo = (await request.json()) as { alvoTipo: string; alvoId: string; descricao: string };
+    const reporte: ReporteSaida = {
+      id: `reporte-${proximoIdReporte++}`,
+      alvoTipo: corpo.alvoTipo,
+      alvoId: corpo.alvoId,
+      descricao: corpo.descricao,
+      status: 'aberto',
+      criadoEm: new Date().toISOString(),
+    };
+    return HttpResponse.json(reporte, { status: 201 });
+  }),
 
   // ---- Questões e tentativas (fluxo step-based) ------------------------------
 
@@ -200,26 +310,81 @@ export const handlers = [
       : HttpResponse.json({ message: 'Conjunto não encontrado.', statusCode: 404 }, { status: 404 });
   }),
 
-  http.post(rota('/questoes/:id/tentativas'), ({ params }) =>
-    HttpResponse.json({ ...tentativaPasso1Fixture, questaoId: params.id as string }, { status: 201 }),
-  ),
-
-  http.post(rota('/tentativas/:id/passos'), ({ params }) => {
-    const id = params.id as string;
-    const proximoId = proximaTentativaPorId[id];
-    if (!proximoId) {
-      return HttpResponse.json(
-        { message: 'Esta tentativa não aceita mais passos.', statusCode: 400 },
-        { status: 400 },
-      );
-    }
-    return HttpResponse.json(tentativasFixture[proximoId]);
+  http.post(rota('/questoes/:id/tentativas'), async ({ params, request }) => {
+    const questaoId = params.id as string;
+    await request.json().catch(() => ({})); // { resposta } — o mock não usa o conteúdo, só avança o estado
+    const id = `tentativa-${proximoIdTentativa++}`;
+    const tentativa: TentativaSaida = {
+      id,
+      questaoId,
+      estado: 'em_passos',
+      nPassos: 1,
+      criadaEm: new Date().toISOString(),
+      encerradaEm: null,
+      passos: [criarPasso(1, 'pedido_justificativa', 'Antes de eu comentar: em que trecho você se apoiou?')],
+    };
+    tentativasPorId.set(id, tentativa);
+    return HttpResponse.json(tentativa, { status: 201 });
   }),
 
-  http.post(rota('/tentativas/:id/desistir'), () => HttpResponse.json(tentativasFixture['tentativa-abandonada'])),
+  http.post(rota('/tentativas/:id/passos'), async ({ params, request }) => {
+    const id = params.id as string;
+    const atual = tentativasPorId.get(id);
+    if (!atual) {
+      return HttpResponse.json({ message: 'Tentativa não encontrada.', statusCode: 404 }, { status: 404 });
+    }
+    if (atual.estado === 'resolvida' || atual.estado === 'abandonada') {
+      return HttpResponse.json({ message: 'Esta tentativa já está encerrada.', statusCode: 400 }, { status: 400 });
+    }
+
+    const corpo = (await request.json()) as { tipo: string; conteudo?: string };
+    const ultimo = atual.passos.at(-1);
+
+    if (corpo.tipo === 'resolucao') {
+      if (ultimo?.tipo !== 'dica_localizada') {
+        return HttpResponse.json(
+          { message: 'Ainda não é possível ver a resolução.', statusCode: 400 },
+          { status: 400 },
+        );
+      }
+      const passos = [...atual.passos, criarPasso(atual.passos.length + 1, 'resolucao', RESOLUCAO_PADRAO)];
+      const atualizado: TentativaSaida = {
+        ...atual,
+        passos,
+        nPassos: passos.length,
+        estado: 'resolvida',
+        encerradaEm: new Date().toISOString(),
+      };
+      tentativasPorId.set(id, atualizado);
+      return HttpResponse.json(atualizado);
+    }
+
+    // justificativa_aluno: registra a resposta do aluno e já devolve a próxima dica.
+    const respostaAluno = criarPasso(atual.passos.length + 1, 'justificativa_aluno', corpo.conteudo ?? '');
+    const proximaDica =
+      ultimo?.tipo === 'pedido_justificativa'
+        ? criarPasso(atual.passos.length + 2, 'dica_conceitual', DICA_CONCEITUAL_PADRAO)
+        : criarPasso(atual.passos.length + 2, 'dica_localizada', DICA_LOCALIZADA_PADRAO);
+
+    const passos = [...atual.passos, respostaAluno, proximaDica];
+    const atualizado: TentativaSaida = { ...atual, passos, nPassos: passos.length, estado: 'em_passos' };
+    tentativasPorId.set(id, atualizado);
+    return HttpResponse.json(atualizado);
+  }),
+
+  http.post(rota('/tentativas/:id/desistir'), ({ params }) => {
+    const id = params.id as string;
+    const atual = tentativasPorId.get(id);
+    if (!atual) {
+      return HttpResponse.json({ message: 'Tentativa não encontrada.', statusCode: 404 }, { status: 404 });
+    }
+    const atualizado: TentativaSaida = { ...atual, estado: 'abandonada', encerradaEm: new Date().toISOString() };
+    tentativasPorId.set(id, atualizado);
+    return HttpResponse.json(atualizado);
+  }),
 
   http.get(rota('/tentativas/:id'), ({ params }) => {
-    const tentativa: TentativaSaida | undefined = tentativasFixture[params.id as string];
+    const tentativa = tentativasPorId.get(params.id as string);
     return tentativa
       ? HttpResponse.json(tentativa)
       : HttpResponse.json({ message: 'Tentativa não encontrada.', statusCode: 404 }, { status: 404 });
@@ -229,28 +394,37 @@ export const handlers = [
 
   http.post(rota('/sessoes'), async ({ request }) => {
     const corpo = (await request.json()) as { secaoId: string };
+    const existente = sessoesPorSecaoId.get(corpo.secaoId);
+    if (existente) return HttpResponse.json(existente, { status: 201 });
+
     const secao = secoesFixture[corpo.secaoId];
     const sessao: SessaoSaida = {
-      id: 'sessao-1',
+      id: `sessao-${sessoesPorSecaoId.size + 1}`,
       sectionId: corpo.secaoId,
       tituloSecao: secao?.titulo ?? 'Seção',
       criadaEm: new Date().toISOString(),
       mensagens: [],
     };
+    sessoesPorSecaoId.set(corpo.secaoId, sessao);
     return HttpResponse.json(sessao, { status: 201 });
   }),
 
-  http.get(rota('/sessoes/:id'), ({ params }) =>
-    HttpResponse.json({
-      id: params.id as string,
-      sectionId: 'sec-3-1',
-      tituloSecao: 'Heurísticas e Vieses',
-      criadaEm: new Date().toISOString(),
-      mensagens: [],
-    } satisfies SessaoSaida),
-  ),
+  http.get(rota('/sessoes/:id'), ({ params }) => {
+    const sessao = Array.from(sessoesPorSecaoId.values()).find((s) => s.id === params.id);
+    return sessao
+      ? HttpResponse.json(sessao)
+      : HttpResponse.json({ message: 'Sessão não encontrada.', statusCode: 404 }, { status: 404 });
+  }),
 
-  http.get(rota('/me/sessoes'), () => HttpResponse.json([])),
+  http.get(rota('/me/sessoes'), () => {
+    const resumos: SessaoResumo[] = Array.from(sessoesPorSecaoId.values()).map((sessao) => ({
+      id: sessao.id,
+      sectionId: sessao.sectionId,
+      tituloSecao: sessao.tituloSecao,
+      criadaEm: sessao.criadaEm,
+    }));
+    return HttpResponse.json(resumos);
+  }),
 
   /**
    * Escolha de cenário pelo conteúdo da mensagem, para testar as três

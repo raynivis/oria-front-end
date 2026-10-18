@@ -37,6 +37,9 @@ yarn-error.log*
 # vercel
 .vercel
 
+# referência visual do protótipo Lovable (UI_RULES.md, 8.1) — não faz parte do app
+/lovable-project-d217a4be
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { cn } from 'cn';
 import type { SumarioNo } from '@/lib/api/tipos';
+import { CheckSecaoLida } from './check-secao-lida';
 
 export function SumarioArvore({ nos, ativoId }: { nos: SumarioNo[]; ativoId?: string }) {
   return (
@@ -21,11 +22,12 @@ function NoSumario({ no, ativoId }: { no: SumarioNo; ativoId?: string }) {
         href={no.href}
         aria-current={no.id === ativoId ? 'page' : undefined}
         className={cn(
-          'block rounded-md px-2 py-1.5 text-sm hover:bg-muted',
+          'flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted',
           no.id === ativoId && 'bg-muted font-medium text-foreground',
         )}
       >
-        {no.titulo}
+        <span>{no.titulo}</span>
+        <CheckSecaoLida secaoId={no.id} />
       </Link>
     );
   }

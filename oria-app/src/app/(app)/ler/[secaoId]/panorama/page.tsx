@@ -5,6 +5,8 @@ import { ErroApiCliente } from '@/lib/api/erros';
 import type { PanoramaSaida, SecaoSaida, SumarioNo } from '@/lib/api/tipos';
 import { encontrarCapituloAncestral } from '@/lib/leitor/sumario';
 import { BotaoComecarLeitura } from '@/components/leitor/botao-comecar-leitura';
+import { RegistroAberturaPanorama } from '@/components/leitor/registro-abertura-panorama';
+import { BotaoReporte } from '@/components/reportes/botao';
 
 type ParametrosPagina = { params: Promise<{ secaoId: string }> };
 
@@ -37,7 +39,11 @@ export default async function PaginaPanorama({ params }: ParametrosPagina) {
 
   return (
     <main className="mx-auto flex max-w-2xl flex-1 flex-col items-center gap-8 px-4 py-12 text-center">
-      <div>
+      <RegistroAberturaPanorama secaoId={secaoId} />
+      <div className="relative w-full">
+        <div className="absolute top-0 right-0">
+          <BotaoReporte alvoTipo="panorama" alvoId={secaoId} />
+        </div>
         <p className="text-sm text-muted-foreground">Panorama{capitulo ? ` · ${capitulo}` : ''}</p>
         <h1 className="text-2xl font-semibold">{secao.titulo}</h1>
         <p className="mt-1 text-sm text-muted-foreground">Leitura estimada: {panorama.tempoEstimadoMin} minutos</p>
