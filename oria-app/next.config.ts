@@ -7,6 +7,9 @@ const nextConfig: NextConfig = {
   // `use cache: private` em praticamente toda rota, sem ganho real para um
   // projeto cujo objetivo é a correção pedagógica da interface, não o tempo
   // de navegação. Renderização dinâmica clássica, como os docs já assumem.
+  experimental: {
+    agentUpgrade: "security",
+  },
   turbopack: {
     rules: {
       "*.css": {
