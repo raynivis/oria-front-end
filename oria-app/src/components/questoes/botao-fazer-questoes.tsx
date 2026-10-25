@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { ConjuntoSaida } from '@/lib/api/tipos';
 import type { ErroApi } from '@/lib/api/erros';
@@ -33,8 +34,14 @@ export function BotaoFazerQuestoes({ secaoId }: { secaoId: string }) {
   return (
     <div className="flex flex-col items-end gap-1">
       <Button type="button" size="sm" variant="outline" onClick={gerar} disabled={gerando}>
+        {gerando && <Loader2 className="animate-spin" />}
         {gerando ? 'Gerando…' : 'Fazer questões desta seção'}
       </Button>
+      {gerando && (
+        <p className="text-xs text-muted-foreground">
+          Pode levar até um minuto e meio na primeira vez — depois fica salvo.
+        </p>
+      )}
       {erro && <p className="text-xs text-destructive">{erro}</p>}
     </div>
   );

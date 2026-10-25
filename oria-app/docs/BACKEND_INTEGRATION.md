@@ -12,26 +12,66 @@ da verdade.
 
 ---
 
-## 0. Antes de começar — dois bloqueios reais
+## Status atual (atualizado após a validação ao vivo de 25/10/2026)
 
-**1. CORS não está configurado no backend.** Nenhuma chamada do navegador vai
-funcionar (nem GET) até isso ser resolvido, porque o frontend roda em uma
-origem diferente da API. Duas saídas:
+O backend está rodando em dev (`http://localhost:3000`) e foi validado ponta a
+ponta contra um livro real — não só contra o fixture de teste. Três bugs só
+apareciam com conteúdo real e já foram corrigidos (parser de EPUB truncando
+texto, timeout de fila numa ingestão longa, e o modelo truncando UUID de
+conceito nas questões); nenhum deles muda o contrato da API descrito abaixo.
 
-- Pedir para adicionar no `bootstrap.ts` do backend:
-  ```ts
-  app.enableCors({
-    origin: 'http://localhost:3001', // origem do frontend em dev
-    credentials: true,               // só necessário se usar cookies (ver seção 2)
-  });
-  ```
-- Ou não depender de CORS: fazer todas as chamadas através de Route Handlers
-  do Next.js (`app/api/.../route.ts`), que rodam no servidor e chamam a API
-  por trás — o navegador só fala com o próprio Next.js, mesma origem. É a
-  abordagem recomendada neste documento (seção 2) porque também resolve o
-  armazenamento do token com mais segurança.
+**CORS está habilitado e testado** (`enableCors`, origem controlada por
+`CORS_ORIGIN` no `.env` do backend, hoje `http://localhost:3001`). Se o
+frontend em dev rodar em outra porta, é só pedir pra ajustar essa variável.
 
-**2. Conflito de porta em dev.** `next dev` e o backend (`PORT` no `.env` do
+**Conta de teste pronta:**
+```
+email: aluno@oria.com
+senha: senha12345
+```
+
+**Livro real já ingerido**, pode usar pra montar as telas em vez de só mockar:
+```
+livroId:  2a37b8a1-1610-4c38-acc8-cd330d3e3be1
+título:   Educomunicação no contexto pandêmico: desafios do ensino remoto
+14 seções, hierarquia plana (só capítulos, sem sub-capítulos)
+```
+`GET /api/v1/livros/:id/sumario` com esse id devolve as 14 entradas reais.
+
+**Comportamento a desenhar a UI em volta (todos confirmados ao vivo, não só
+no papel):**
+- **Panorama, fichamento e questões chamam um LLM gratuito de verdade** —
+  isso pode levar de ~20s a ~90s em uma única chamada (o modelo atual é
+  gratuito e nem sempre rápido). Não é um erro, é o tempo real de geração.
+  Desenhe loading state para isso, não timeout curto.
+- **O chat (`POST /sessoes/:id/mensagens`) funciona em streaming de verdade**:
+  primeiro token chega em ~15–20s, depois o texto vai completando aos poucos,
+  com eventos `citacao` intercalados e `fim` no final. Testado com pergunta
+  dentro do livro (resposta com citações, `encontrouBase: true`), pergunta de
+  acompanhamento usando o histórico da sessão, e pergunta fora do livro
+  (recusa imediata, sem citação, sem chamar o modelo).
+- **Primeira chamada de panorama/fichamento por seção é a mais lenta**;
+  chamadas seguintes para a mesma seção/mesmo recorte vêm do cache quase
+  instantaneamente (fichamento e panorama são cacheados por seção/trecho).
+
+---
+
+## 0. Antes de começar
+
+**CORS já está configurado no backend** (`app.enableCors` em `bootstrap.ts`,
+via a env `CORS_ORIGIN`). O valor atual libera `http://localhost:3001`.
+Testado na prática: preflight `OPTIONS` devolve `204` com
+`Access-Control-Allow-Origin`, `Access-Control-Allow-Credentials: true` e os
+métodos/headers corretos. Se o frontend em dev rodar em outra porta, ajuste
+`CORS_ORIGIN` no `.env` do backend (aceita lista separada por vírgula para
+mais de uma origem) e reinicie o servidor — variável de ambiente não é
+hot-reload.
+
+Isso não torna a abordagem de Route Handlers como proxy (seção 2) menos
+válida — ela continua sendo a opção mais segura pra guardar o token — só não
+é mais a *única* forma de fazer o navegador falar com a API.
+
+**Conflito de porta em dev.** `next dev` e o backend (`PORT` no `.env` do
 backend) usam `3000` por padrão. Rode o frontend em outra porta:
 
 ```bash
@@ -610,8 +650,7 @@ como roteiro ponta-a-ponta:
 
 ## 8. Resumo do que falta no backend para o frontend funcionar em produção
 
-- **CORS** (seção 0) — ou resolvido no backend, ou contornado com Route
-  Handlers como proxy (recomendado, e já cobre o problema de guardar o
-  token com segurança).
+- **CORS já resolvido** (seção 0) — só confirme que `CORS_ORIGIN` no backend
+  bate com a porta real do frontend antes de implantar em outro ambiente.
 - **Sem refresh token** — planeje a expiração de sessão (padrão 7 dias) e o
   redirecionamento ao login em qualquer 401.

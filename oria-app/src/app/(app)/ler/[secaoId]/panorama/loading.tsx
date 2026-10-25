@@ -7,6 +7,9 @@ export default function CarregandoPanorama() {
         <Skeleton className="h-4 w-32" />
         <Skeleton className="h-7 w-64" />
         <Skeleton className="h-4 w-48" />
+        <p className="mt-2 text-xs text-muted-foreground">
+          Pode levar até um minuto e meio na primeira vez — depois fica salvo.
+        </p>
       </div>
       <div className="flex w-full flex-col gap-6">
         {Array.from({ length: 4 }).map((_, indice) => (

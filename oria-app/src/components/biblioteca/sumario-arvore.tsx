@@ -17,9 +17,10 @@ export function SumarioArvore({ nos, ativoId }: { nos: SumarioNo[]; ativoId?: st
 
 function NoSumario({ no, ativoId }: { no: SumarioNo; ativoId?: string }) {
   if (no.filhas.length === 0) {
+    // `no.href` é o caminho interno do EPUB (ex.: "OPS/text/03.xhtml"), não uma rota do app — navegamos pelo id.
     return (
       <Link
-        href={no.href}
+        href={`/ler/${no.id}`}
         aria-current={no.id === ativoId ? 'page' : undefined}
         className={cn(
           'flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted',

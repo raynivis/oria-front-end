@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { enfileirarEvento } from '@/lib/telemetria/fila';
 import type { FichamentoSaida } from '@/lib/api/tipos';
@@ -51,8 +52,14 @@ export function BotaoGerarFichamento({ secaoId, rotulo, trechoCfi, trechoTexto, 
   return (
     <div className="flex flex-col items-end gap-1">
       <Button type="button" size={size} variant="outline" onClick={gerar} disabled={gerando}>
+        {gerando && <Loader2 className="animate-spin" />}
         {gerando ? 'Gerando…' : rotulo}
       </Button>
+      {gerando && (
+        <p className="text-xs text-muted-foreground">
+          Pode levar até um minuto e meio na primeira vez — depois fica salvo.
+        </p>
+      )}
       {erro && <p className="text-xs text-destructive">{erro}</p>}
     </div>
   );
