@@ -5,18 +5,10 @@ import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { enfileirarEvento } from '@/lib/telemetria/fila';
 import { destacarCitacaoNoTexto } from '@/lib/chat/destacar-citacao';
+import { usePerguntaTrecho } from '@/lib/chat/contexto-pergunta-trecho';
 import { BolhaMensagem } from './bolha-mensagem';
 import type { Citacao, Mensagem } from './tipos';
 import type { EventoChat } from '@/lib/api/tipos';
-
-/** Cinco atalhos (UI_RULES.md, 2.1) — nenhum pede entrega de conteúdo, todos pedem elaboração. */
-const CHIPS = [
-  'Quero explicar isso com minhas palavras',
-  'Onde o texto sustenta essa ideia?',
-  'Não entendi esta parte, me ajude a chegar lá',
-  'Como isso se liga ao capítulo anterior?',
-  'Me teste sobre o que acabei de ler',
-];
 
 const MAXIMO_CITACOES = 3;
 
@@ -27,6 +19,8 @@ export function PainelChat({ sessaoId, secaoId }: { sessaoId: string; secaoId: s
   const abortRef = useRef<AbortController | null>(null);
   const listaRef = useRef<HTMLDivElement>(null);
   const proximoId = useRef(0);
+  const { perguntaPendente, consumirPergunta } = usePerguntaTrecho();
+  const ultimoNonceTratado = useRef(0);
 
   // Cancela o stream em andamento ao sair da tela (UI_RULES.md, 2.2).
   useEffect(() => {
@@ -118,6 +112,15 @@ export function PainelChat({ sessaoId, secaoId }: { sessaoId: string; secaoId: s
     }
   }
 
+  // Pergunta disparada a partir de um trecho selecionado no texto (`TextoSecao`).
+  useEffect(() => {
+    if (!perguntaPendente || perguntaPendente.nonce === ultimoNonceTratado.current) return;
+    ultimoNonceTratado.current = perguntaPendente.nonce;
+    void enviarMensagem(perguntaPendente.mensagem);
+    consumirPergunta();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [perguntaPendente, consumirPergunta]);
+
   function aoClicarCitacao(citacao: Citacao) {
     enfileirarEvento('clicou_citacao', secaoId, { chunkId: citacao.chunkId });
     destacarCitacaoNoTexto(citacao.trecho);
@@ -127,24 +130,11 @@ export function PainelChat({ sessaoId, secaoId }: { sessaoId: string; secaoId: s
     <div className="flex h-full flex-col gap-3">
       <p className="text-sm font-medium">Tutora</p>
 
-      <div className="flex flex-wrap gap-1.5">
-        {CHIPS.map((chip) => (
-          <Button
-            key={chip}
-            type="button"
-            variant="outline"
-            size="xs"
-            onClick={() => enviarMensagem(chip)}
-            disabled={enviando}
-          >
-            {chip}
-          </Button>
-        ))}
-      </div>
-
       <div ref={listaRef} className="flex flex-1 flex-col gap-3 overflow-y-auto">
         {mensagens.length === 0 && (
-          <p className="text-sm text-muted-foreground">Pergunte algo sobre esta seção, ou use um dos atalhos acima.</p>
+          <p className="text-sm text-muted-foreground">
+            Pergunte algo sobre esta seção, ou selecione um trecho do texto para perguntar sobre ele.
+          </p>
         )}
         {mensagens.map((mensagem) => (
           <BolhaMensagem key={mensagem.id} mensagem={mensagem} onClicarCitacao={aoClicarCitacao} />
