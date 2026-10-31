@@ -354,6 +354,7 @@ GET  /secoes/:id/conceitos        [JWT]  -> ConceitoSaida[]
 GET  /me/conceitos                [JWT]  -> { dominados: ConceitoClassificado[], aRevisar: ConceitoClassificado[] }
 POST /secoes/:id/questoes         [JWT]  { conceitoIds?: string[] }  -> ConjuntoSaida
 GET  /conjuntos/:id               [JWT]  -> ConjuntoSaida
+GET  /me/conjuntos                [JWT]  ?livroId=<uuid>             -> ConjuntoResumo[]
 POST /questoes/:id/tentativas     [JWT]  { resposta: string }       -> TentativaSaida
 POST /tentativas/:id/passos       [JWT]  { tipo, conteudo? }         -> TentativaSaida
 POST /tentativas/:id/desistir     [JWT]  -> TentativaSaida
@@ -367,6 +368,13 @@ type ConjuntoSaida = {
   id: string; sectionId: string; criadoEm: string;
   questoes: Array<{ id: string; ordem: number; enunciado: string; conceitos: Array<{ id: string; nome: string }> }>;
 };
+type ConjuntoResumo = {
+  id: string; sectionId: string; tituloSecao: string; livroId: string; tituloLivro: string; criadoEm: string;
+  questoes: Array<{
+    id: string; enunciado: string; tentativaId: string | null;
+    estado: 'pendente' | 'aberta' | 'em_passos' | 'resolvida' | 'abandonada';
+  }>;
+};
 type TentativaSaida = {
   id: string; questaoId: string;
   estado: 'aberta' | 'em_passos' | 'resolvida' | 'abandonada';
@@ -379,6 +387,12 @@ type TentativaSaida = {
   }>;
 };
 ```
+
+`GET /me/conjuntos` lista os conjuntos de questões gerados pelo aluno, com o
+estado de cada questão — `'pendente'` quando nunca houve
+`POST /questoes/:id/tentativas` para ela, senão o mesmo `estado` de
+`TentativaSaida` (a tentativa mais recente, se houver mais de uma). Alimenta
+a tela "Questões" (pendentes vs. respondidas).
 
 **Isto é o coração pedagógico do sistema — a UI precisa respeitar a máquina
 de estados, não tentar adivinhar o próximo passo:**
@@ -404,6 +418,20 @@ de estados, não tentar adivinhar o próximo passo:**
 da seção; com `conceitoIds`, restringe (é o que sustenta "gerar nova rodada
 sobre os conceitos que ficaram como 'a revisar'" — pegue os ids de
 `GET /me/conceitos`).
+
+**`GET /me/conjuntos` é pra tela "Questões" (pendentes + respondidas)** —
+todos os conjuntos do aluno logado, com o estado de cada questão já
+resolvido no servidor, sem precisar de uma chamada por tentativa:
+
+- `estado: 'pendente'` e `tentativaId: null` significam que a questão nunca
+  teve `POST /questoes/:id/tentativas`. Os outros quatro valores são
+  exatamente os de `TentativaSaida.estado` — reaproveite a mesma lógica de UI
+  que a tela de questão individual já tem.
+- Se o aluno tentou uma questão mais de uma vez (por exemplo, desistiu e
+  começou de novo), o campo mostra a **tentativa mais recente**, não a
+  primeira — mesmo critério de "estado atual" que `FichamentoResumoDto` usa
+  para a versão do fichamento.
+- `?livroId=<uuid>` filtra como em `GET /me/fichamentos`.
 
 ### Diálogo (chat) — ver seção 5, é streaming
 
@@ -643,6 +671,7 @@ como roteiro ponta-a-ponta:
 | Fichamento | `POST/GET/PATCH /fichamento(s)`, `GET /fichamentos/:id/versoes` |
 | Biblioteca de fichamentos | `GET /me/fichamentos`, `GET /me/fichamentos/exportar` |
 | Questões (step-based) | `POST /secoes/:id/questoes`, `POST /questoes/:id/tentativas`, `POST /tentativas/:id/passos` |
+| Minhas questões (pendentes/respondidas) | `GET /me/conjuntos` |
 | Conceitos | `GET /secoes/:id/conceitos`, `GET /me/conceitos` |
 | Fechamento da seção | `POST /secoes/:id/metacognicao`, `GET /me/conceitos`, `POST /reportes` |
 

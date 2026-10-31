@@ -5,7 +5,11 @@ import { FormularioLogin } from '@/components/auth/formulario-login';
 
 export const metadata: Metadata = { title: 'Entrar — Tutora Oria' };
 
-export default function PaginaLogin() {
+type ParametrosPagina = { searchParams: Promise<{ sessao?: string }> };
+
+export default async function PaginaLogin({ searchParams }: ParametrosPagina) {
+  const { sessao } = await searchParams;
+
   return (
     <Card className="w-full max-w-sm">
       <CardHeader>
@@ -13,6 +17,11 @@ export default function PaginaLogin() {
         <CardDescription>Acesse sua conta para continuar a leitura.</CardDescription>
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
+        {sessao === 'expirada' && (
+          <p className="rounded-md bg-muted px-3 py-2 text-sm text-muted-foreground">
+            Sua sessão expirou. Faça login novamente.
+          </p>
+        )}
         <FormularioLogin />
         <p className="text-center text-sm text-muted-foreground">
           Ainda não tem conta?{' '}

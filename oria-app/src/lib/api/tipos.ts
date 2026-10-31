@@ -151,10 +151,12 @@ export type PassoTipo =
   | 'justificativa_aluno'
   | 'resolucao';
 
+export type EstadoTentativa = 'aberta' | 'em_passos' | 'resolvida' | 'abandonada';
+
 export type TentativaSaida = {
   id: string;
   questaoId: string;
-  estado: 'aberta' | 'em_passos' | 'resolvida' | 'abandonada';
+  estado: EstadoTentativa;
   nPassos: number;
   criadaEm: string;
   encerradaEm: string | null;
@@ -163,6 +165,21 @@ export type TentativaSaida = {
     tipo: PassoTipo;
     conteudo: string;
     criadoEm: string;
+  }>;
+};
+
+export type ConjuntoResumo = {
+  id: string;
+  sectionId: string;
+  tituloSecao: string;
+  livroId: string;
+  tituloLivro: string;
+  criadoEm: string;
+  questoes: Array<{
+    id: string;
+    enunciado: string;
+    tentativaId: string | null;
+    estado: EstadoTentativa | 'pendente';
   }>;
 };
 

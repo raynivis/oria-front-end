@@ -1,6 +1,4 @@
-import { redirect } from 'next/navigation';
-import { chamarApi } from '@/lib/api/cliente';
-import { ErroApiCliente } from '@/lib/api/erros';
+import { chamarApi, redirecionarSeSessaoExpirada } from '@/lib/api/cliente';
 import type { UsuarioSaida } from '@/lib/api/tipos';
 import { BarraLateral } from '@/components/app-shell/barra-lateral';
 import { CabecalhoTopo } from '@/components/app-shell/cabecalho-topo';
@@ -11,9 +9,7 @@ export default async function LayoutApp({ children }: { children: React.ReactNod
   try {
     usuario = await chamarApi<UsuarioSaida>('/me');
   } catch (erro) {
-    if (erro instanceof ErroApiCliente && erro.statusCode === 401) {
-      redirect('/login');
-    }
+    redirecionarSeSessaoExpirada(erro);
     throw erro;
   }
 

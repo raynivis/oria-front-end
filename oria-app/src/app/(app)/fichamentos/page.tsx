@@ -1,14 +1,23 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
-import { chamarApi } from '@/lib/api/cliente';
+import { chamarApi, redirecionarSeSessaoExpirada } from '@/lib/api/cliente';
 import type { FichamentoResumoDto } from '@/lib/api/tipos';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { CabecalhoPagina } from '@/components/app-shell/cabecalho-pagina';
 
 export const metadata: Metadata = { title: 'Fichamentos — Tutora Oria' };
 
+async function buscarFichamentos(): Promise<FichamentoResumoDto[]> {
+  try {
+    return await chamarApi<FichamentoResumoDto[]>('/me/fichamentos');
+  } catch (erro) {
+    redirecionarSeSessaoExpirada(erro);
+    throw erro;
+  }
+}
+
 export default async function PaginaFichamentos() {
-  const fichamentos = await chamarApi<FichamentoResumoDto[]>('/me/fichamentos');
+  const fichamentos = await buscarFichamentos();
 
   return (
     <main className="mx-auto w-full max-w-3xl px-4 py-6 md:px-8 md:py-8">

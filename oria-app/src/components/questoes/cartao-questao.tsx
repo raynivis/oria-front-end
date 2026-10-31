@@ -121,6 +121,7 @@ export function CartaoQuestao({ questao, sectionId }: { questao: Questao; sectio
           // Estado 1 — questão aberta
           <>
             <Textarea
+              aria-label="Sua resposta"
               value={campo}
               onChange={(evento) => setCampo(evento.target.value)}
               placeholder="Escreva sua resposta…"

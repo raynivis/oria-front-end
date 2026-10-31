@@ -1,6 +1,6 @@
 import { CheckCircle2, FilePenLine, Pencil } from 'lucide-react';
 import { cn } from 'cn';
-import { chamarApi } from '@/lib/api/cliente';
+import { chamarApi, redirecionarSeSessaoExpirada } from '@/lib/api/cliente';
 import type { ProgressoSaida, UsuarioSaida } from '@/lib/api/tipos';
 import { BotaoContinuarLeitura } from '@/components/dashboard/botao-continuar-leitura';
 
@@ -12,15 +12,21 @@ const TONS = {
 } as const;
 
 async function buscarDados(): Promise<{ usuario: UsuarioSaida; progresso: ProgressoSaida }> {
-  const [usuario, progresso] = await Promise.all([
-    chamarApi<UsuarioSaida>('/me'),
-    chamarApi<ProgressoSaida>('/me/progresso'),
-  ]);
-  return { usuario, progresso };
+  try {
+    const [usuario, progresso] = await Promise.all([
+      chamarApi<UsuarioSaida>('/me'),
+      chamarApi<ProgressoSaida>('/me/progresso'),
+    ]);
+    return { usuario, progresso };
+  } catch (erro) {
+    // Next renderiza layout e página em paralelo — o /me do layout não termina
+    // necessariamente antes deste, então esta página também precisa tratar o 401.
+    redirecionarSeSessaoExpirada(erro);
+    throw erro;
+  }
 }
 
 export default async function Home() {
-  // A sessão já foi confirmada pelo layout de (app) — aqui só busca o que esta tela mostra.
   const { usuario, progresso } = await buscarDados();
 
   return (

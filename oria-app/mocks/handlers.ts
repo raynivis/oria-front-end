@@ -1,5 +1,6 @@
 import { http, HttpResponse } from 'msw';
 import type {
+  ConjuntoResumo,
   ConjuntoSaida,
   FichamentoSaida,
   FichamentoVersaoSaida,
@@ -388,6 +389,30 @@ export const handlers = [
     return tentativa
       ? HttpResponse.json(tentativa)
       : HttpResponse.json({ message: 'Tentativa não encontrada.', statusCode: 404 }, { status: 404 });
+  }),
+
+  http.get(rota('/me/conjuntos'), () => {
+    const secao = secoesFixture[conjuntoFixture.sectionId];
+    const resumo: ConjuntoResumo = {
+      id: conjuntoFixture.id,
+      sectionId: conjuntoFixture.sectionId,
+      tituloSecao: secao?.titulo ?? conjuntoFixture.sectionId,
+      livroId: livroMenteEDecisao.id,
+      tituloLivro: livroMenteEDecisao.titulo,
+      criadoEm: conjuntoFixture.criadoEm,
+      questoes: conjuntoFixture.questoes.map((questao) => {
+        const maisRecente = Array.from(tentativasPorId.values())
+          .filter((t) => t.questaoId === questao.id)
+          .sort((a, b) => b.criadaEm.localeCompare(a.criadaEm))[0];
+        return {
+          id: questao.id,
+          enunciado: questao.enunciado,
+          tentativaId: maisRecente?.id ?? null,
+          estado: maisRecente?.estado ?? 'pendente',
+        };
+      }),
+    };
+    return HttpResponse.json([resumo]);
   }),
 
   // ---- Diálogo (chat) ----------------------------------------------------------

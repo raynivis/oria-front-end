@@ -149,6 +149,7 @@ export function PainelChat({ sessaoId, secaoId }: { sessaoId: string; secaoId: s
         }}
       >
         <Textarea
+          aria-label="Mensagem para a tutora"
           value={rascunho}
           onChange={(evento) => setRascunho(evento.target.value)}
           onKeyDown={(evento) => {

@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
-import { chamarApi } from '@/lib/api/cliente';
+import { chamarApi, redirecionarSeSessaoExpirada } from '@/lib/api/cliente';
 import { ErroApiCliente } from '@/lib/api/erros';
 import type { SecaoSaida, SumarioNo } from '@/lib/api/tipos';
 import { encontrarCapituloAncestral } from '@/lib/leitor/sumario';
@@ -33,6 +33,7 @@ async function buscarDadosOu404(secaoId: string): Promise<{ secao: SecaoSaida; s
     if (erro instanceof ErroApiCliente && erro.statusCode === 404) {
       notFound();
     }
+    redirecionarSeSessaoExpirada(erro);
     throw erro;
   }
 }

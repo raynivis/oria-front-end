@@ -1,15 +1,24 @@
 import Link from 'next/link';
 import type { Metadata } from 'next';
 import { BookOpen } from 'lucide-react';
-import { chamarApi } from '@/lib/api/cliente';
+import { chamarApi, redirecionarSeSessaoExpirada } from '@/lib/api/cliente';
 import type { LivroSaida } from '@/lib/api/tipos';
 import { Card } from '@/components/ui/card';
 import { CabecalhoPagina } from '@/components/app-shell/cabecalho-pagina';
 
 export const metadata: Metadata = { title: 'Biblioteca — Tutora Oria' };
 
+async function buscarLivros(): Promise<LivroSaida[]> {
+  try {
+    return await chamarApi<LivroSaida[]>('/livros');
+  } catch (erro) {
+    redirecionarSeSessaoExpirada(erro);
+    throw erro;
+  }
+}
+
 export default async function PaginaBiblioteca() {
-  const livros = await chamarApi<LivroSaida[]>('/livros');
+  const livros = await buscarLivros();
 
   return (
     <main className="mx-auto w-full max-w-5xl px-4 py-6 md:px-8 md:py-8">

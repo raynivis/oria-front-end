@@ -1,6 +1,7 @@
+import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
-import { chamarApi } from '@/lib/api/cliente';
+import { chamarApi, redirecionarSeSessaoExpirada } from '@/lib/api/cliente';
 import { ErroApiCliente } from '@/lib/api/erros';
 import type { ConjuntoSaida } from '@/lib/api/tipos';
 import { CartaoQuestao } from '@/components/questoes/cartao-questao';
@@ -14,6 +15,7 @@ async function buscarOu404(conjuntoId: string): Promise<ConjuntoSaida> {
     if (erro instanceof ErroApiCliente && erro.statusCode === 404) {
       notFound();
     }
+    redirecionarSeSessaoExpirada(erro);
     throw erro;
   }
 }
@@ -33,6 +35,12 @@ export default async function PaginaQuestoes({ params }: ParametrosPagina) {
           .map((questao) => (
             <CartaoQuestao key={questao.id} questao={questao} sectionId={conjunto.sectionId} />
           ))}
+      </div>
+
+      <div className="mt-6">
+        <Link href={`/metacognicao/${conjunto.sectionId}`} className="text-sm font-medium text-primary hover:underline">
+          Fechar esta seção →
+        </Link>
       </div>
     </main>
   );

@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
-import { chamarApi } from '@/lib/api/cliente';
+import { chamarApi, redirecionarSeSessaoExpirada } from '@/lib/api/cliente';
 import { ErroApiCliente } from '@/lib/api/erros';
 import type { LivroSaida, SumarioNo } from '@/lib/api/tipos';
 import { SumarioArvore } from '@/components/biblioteca/sumario-arvore';
@@ -17,6 +17,7 @@ async function buscarLivroOu404(id: string): Promise<[LivroSaida, SumarioNo[]]> 
     if (erro instanceof ErroApiCliente && erro.statusCode === 404) {
       notFound();
     }
+    redirecionarSeSessaoExpirada(erro);
     throw erro;
   }
 }

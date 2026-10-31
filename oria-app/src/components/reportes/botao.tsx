@@ -74,6 +74,7 @@ export function BotaoReporte({ alvoTipo, alvoId }: { alvoTipo: string; alvoId: s
         ) : (
           <>
             <Textarea
+              aria-label="Descrição do problema"
               value={descricao}
               onChange={(evento) => setDescricao(evento.target.value)}
               placeholder="O que está errado aqui?"

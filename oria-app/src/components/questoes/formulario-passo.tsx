@@ -55,6 +55,7 @@ export function FormularioPasso({
       )}
 
       <Textarea
+        aria-label="Sua resposta a este passo"
         value={campo}
         onChange={(evento) => setCampo(evento.target.value)}
         placeholder="Escreva aqui…"
