@@ -69,8 +69,12 @@ test('fluxo step-based: sem veredito, trilha visível, resolução só no estado
 
   await expect(cartaoB.getByText('Passo 1 de 3')).toBeVisible();
   await expect(cartaoB.getByRole('button', { name: 'Ver resolução' })).toHaveCount(0);
-  await expect(cartaoA.getByRole('button', { name: 'Preciso de uma dica' })).toBeVisible();
-  await expect(cartaoB.getByRole('button', { name: 'Preciso de uma dica' })).toBeVisible();
+  // Item 3.8 da correção de usabilidade: não existe "pedir dica" como ação do servidor
+  // (as dicas são automáticas) — o botão que fazia isso, e que deixava enviar vazio, foi removido.
+  await expect(page.getByRole('button', { name: /preciso de (uma|outra) dica/i })).toHaveCount(0);
+  // "Enviar" é a única ação, e fica desabilitado com o campo vazio — não dá mais para
+  // criar um passo vazio na trilha.
+  await expect(cartaoA.getByRole('button', { name: 'Enviar' })).toBeDisabled();
   await semVeredito(page);
 
   // ---- Estado 2 → 3 (só avança a questão A) -----------------------------

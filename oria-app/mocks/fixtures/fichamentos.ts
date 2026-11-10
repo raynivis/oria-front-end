@@ -48,11 +48,13 @@ export const fichamentoVersoesFixture: FichamentoVersaoSaida[] = [
   },
 ];
 
-/** Ficha de um trecho específico, ainda sem edição do aluno. */
+/** Ficha de um trecho específico, ainda sem edição do aluno — com os campos aditivos (item 2.4). */
 export const fichamentoTrechoFixture: FichamentoSaida = {
   id: 'fichamento-2',
   sectionId: 'sec-3-1',
   trechoCfi: 'offset:120-340',
+  trechoTexto:
+    'Quando confrontamos uma questão difícil, mas sem resposta imediata, muitas vezes respondemos a uma questão mais fácil sem notar a substituição.',
   numeroVersaoAtual: 1,
   origemVersaoAtual: 'ia',
   conteudo:
@@ -62,6 +64,10 @@ export const fichamentoTrechoFixture: FichamentoSaida = {
   proporcaoAluno: 0,
   criadoEm: '2026-03-03T08:00:00.000Z',
   atualizadoEm: '2026-03-03T08:00:00.000Z',
+  tituloLivro: 'Mente e Decisão',
+  livroId: 'livro-1',
+  tituloSecao: 'Heurísticas e Vieses',
+  statusGeracao: 'pronto',
 };
 
 export const fichamentoTrechoVersoesFixture: FichamentoVersaoSaida[] = [

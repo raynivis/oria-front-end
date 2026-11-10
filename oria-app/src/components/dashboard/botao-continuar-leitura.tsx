@@ -1,37 +1,35 @@
-'use client';
-
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { BookOpen } from 'lucide-react';
 import { cn } from 'cn';
-import { lerUltimaSecao } from '@/lib/telemetria/ultima-secao';
+import type { ProgressoSaida } from '@/lib/api/tipos';
 
 const ESTILO_PADRAO = 'inline-flex items-center gap-1.5 text-sm font-medium text-primary hover:underline';
 const ESTILO_DESTAQUE =
   'inline-flex items-center gap-2 rounded-lg bg-gradient-hero-surface px-4 py-2.5 text-sm font-semibold text-gradient-hero-surface-foreground hover:bg-gradient-hero-surface/90';
 
 /**
- * "Última seção lida" não existe na API — reconstruída no cliente a partir
- * da telemetria (IMPLEMENTATION.md, "Lacunas da API"). Sem nenhuma seção
- * aberta ainda, volta para a biblioteca.
+ * `ultimaSecaoLida` vem de `GET /me/progresso` (item 1.4 da correção de
+ * usabilidade) — antes era reconstruída no cliente via `localStorage`, que
+ * não existe no primeiro acesso de um dispositivo novo nem sincroniza entre
+ * dispositivos. Vindo nulo, o rótulo muda para "Escolher um livro": não faz
+ * sentido convidar a "continuar" uma leitura que nunca começou.
  */
-export function BotaoContinuarLeitura({ destaque = false }: { destaque?: boolean }) {
-  const [secaoId, setSecaoId] = useState<string | null>(null);
-  const [pronto, setPronto] = useState(false);
-
-  useEffect(() => {
-    // localStorage não existe no servidor: só dá para saber depois de montar.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    setSecaoId(lerUltimaSecao());
-    setPronto(true);
-  }, []);
-
-  if (!pronto) return null;
+export function BotaoContinuarLeitura({
+  ultimaSecaoLida,
+  destaque = false,
+}: {
+  ultimaSecaoLida: NonNullable<ProgressoSaida['ultimaSecaoLida']> | null | undefined;
+  destaque?: boolean;
+}) {
+  const rotulo = ultimaSecaoLida ? `Continuar: ${ultimaSecaoLida.tituloSecao}` : 'Escolher um livro';
 
   return (
-    <Link href={secaoId ? `/ler/${secaoId}` : '/biblioteca'} className={cn(destaque ? ESTILO_DESTAQUE : ESTILO_PADRAO)}>
+    <Link
+      href={ultimaSecaoLida ? `/ler/${ultimaSecaoLida.sectionId}` : '/biblioteca'}
+      className={cn(destaque ? ESTILO_DESTAQUE : ESTILO_PADRAO)}
+    >
       {destaque && <BookOpen className="size-4" />}
-      Continuar leitura {!destaque && '→'}
+      {rotulo} {!destaque && '→'}
     </Link>
   );
 }

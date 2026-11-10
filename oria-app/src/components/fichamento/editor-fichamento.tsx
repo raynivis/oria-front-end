@@ -1,22 +1,28 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Button } from '@/components/ui/button';
 import { enfileirarEvento } from '@/lib/telemetria/fila';
-import { ParagrafoComOrigem } from './paragrafo-com-origem';
-import { acharVersaoBaseIA, extrairParagrafos, montarDocumentoComOrigens } from '@/lib/fichamento/conteudo';
+import { OrigemExtension } from './paragrafo-com-origem';
+import { acharVersaoBaseIA, extrairMarkdown, montarDocumentoComOrigens } from '@/lib/fichamento/conteudo';
 import type { FichamentoSaida, FichamentoVersaoSaida } from '@/lib/api/tipos';
 
+const ATRASO_AUTOSAVE_MS = 2500;
+
 /**
- * Edita o fichamento com Tiptap restrito a parágrafos simples (sem negrito,
- * listas, etc. — o que é salvo é sempre texto puro, parágrafos separados por
- * linha em branco, igual ao `textoCompleto` das seções). A marcação de
- * origem por parágrafo é calculada uma vez ao carregar, contra a primeira
- * versão de origem "ia"; fica correta de novo a cada recarregamento após
- * salvar (UI_RULES.md, seção 4.2).
+ * Edita o fichamento com Tiptap, restrito a título, lista e parágrafo — o
+ * que o prompt de fichamento de fato produz (## título, listas, parágrafos;
+ * item 2.2 da correção de usabilidade). O que é salvo é sempre markdown,
+ * igual ao `textoCompleto` das seções. A marcação de origem por bloco é
+ * calculada uma vez ao carregar, contra a primeira versão de origem "ia";
+ * fica correta de novo a cada recarregamento após salvar (UI_RULES.md, 4.2).
+ *
+ * Salva sozinho, com um pequeno atraso após parar de digitar (item 2.7):
+ * mais robusto que interceptar a navegação, e o horário do último
+ * salvamento fica sempre visível.
  */
 export function EditorFichamento({
   fichamento,
@@ -29,6 +35,8 @@ export function EditorFichamento({
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [sujo, setSujo] = useState(false);
+  const [salvoAs, setSalvoAs] = useState<Date | null>(null);
+  const timerAutosave = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const versaoBaseIA = acharVersaoBaseIA(versoes);
   const documentoInicial = montarDocumentoComOrigens(fichamento.conteudo, versaoBaseIA?.conteudo ?? null);
@@ -36,36 +44,40 @@ export function EditorFichamento({
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
-        paragraph: false,
-        heading: false,
-        bulletList: false,
-        orderedList: false,
-        listItem: false,
-        listKeymap: false,
-        blockquote: false,
-        codeBlock: false,
-        code: false,
-        horizontalRule: false,
         bold: false,
         italic: false,
         strike: false,
         underline: false,
         link: false,
+        blockquote: false,
+        codeBlock: false,
+        code: false,
+        horizontalRule: false,
         hardBreak: false,
       }),
-      ParagrafoComOrigem,
+      OrigemExtension,
     ],
     content: documentoInicial,
     immediatelyRender: false,
-    onUpdate: () => setSujo(true),
+    onUpdate: () => {
+      setSujo(true);
+      if (timerAutosave.current) clearTimeout(timerAutosave.current);
+      timerAutosave.current = setTimeout(() => void salvar(), ATRASO_AUTOSAVE_MS);
+    },
   });
+
+  useEffect(() => {
+    return () => {
+      if (timerAutosave.current) clearTimeout(timerAutosave.current);
+    };
+  }, []);
 
   async function salvar() {
     if (!editor) return;
     setSalvando(true);
     setErro(null);
 
-    const conteudo = extrairParagrafos(editor.getJSON()).join('\n\n');
+    const conteudo = extrairMarkdown(editor.getJSON());
 
     try {
       const resposta = await fetch(`/api/fichamentos/${fichamento.id}`, {
@@ -82,12 +94,18 @@ export function EditorFichamento({
 
       enfileirarEvento('editou_fichamento', fichamento.sectionId, { fichamentoId: fichamento.id });
       setSujo(false);
+      setSalvoAs(new Date());
       router.refresh();
     } catch {
       setErro('Não foi possível salvar agora.');
     } finally {
       setSalvando(false);
     }
+  }
+
+  function salvarAgora() {
+    if (timerAutosave.current) clearTimeout(timerAutosave.current);
+    void salvar();
   }
 
   return (
@@ -105,14 +123,25 @@ export function EditorFichamento({
 
       <EditorContent
         editor={editor}
-        className="min-h-40 rounded-md border border-input p-3 text-sm leading-relaxed [&_.tiptap]:outline-none [&_p]:mb-3 [&_p]:border-l-[3px] [&_p]:pl-3 [&_p[data-origem=aluno]]:border-primary [&_p[data-origem=ia]]:border-muted-foreground/50"
+        className="min-h-40 rounded-md border border-input p-3 text-sm leading-relaxed [&_.tiptap]:outline-none [&_h1,&_h2,&_h3,&_h4,&_h5,&_h6]:mb-2 [&_h1,&_h2,&_h3,&_h4,&_h5,&_h6]:mt-3 [&_h1,&_h2,&_h3,&_h4,&_h5,&_h6]:font-semibold [&_li]:border-l-[3px] [&_li]:pl-2 [&_li[data-origem=aluno]]:border-primary [&_li[data-origem=ia]]:border-muted-foreground/50 [&_ol]:mb-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_p]:mb-3 [&_p]:border-l-[3px] [&_p]:pl-3 [&_p[data-origem=aluno]]:border-primary [&_p[data-origem=ia]]:border-muted-foreground/50 [&_ul]:mb-3 [&_ul]:list-disc [&_ul]:pl-5"
       />
 
-      <div className="mt-3 flex items-center justify-end gap-3">
-        {erro && <p className="text-sm text-destructive">{erro}</p>}
-        <Button onClick={salvar} disabled={!sujo || salvando}>
-          {salvando ? 'Salvando…' : 'Salvar'}
-        </Button>
+      <div className="mt-3 flex items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          {salvando
+            ? 'Salvando…'
+            : salvoAs
+              ? `Salvo às ${salvoAs.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
+              : sujo
+                ? 'Alterações não salvas'
+                : ''}
+        </p>
+        <div className="flex items-center gap-3">
+          {erro && <p className="text-sm text-destructive">{erro}</p>}
+          <Button onClick={salvarAgora} disabled={!sujo || salvando}>
+            {salvando ? 'Salvando…' : 'Salvar'}
+          </Button>
+        </div>
       </div>
     </div>
   );

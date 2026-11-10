@@ -4,15 +4,35 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import { BotaoReporte } from '@/components/reportes/botao';
 import { enfileirarEvento } from '@/lib/telemetria/fila';
 import type { ErroApi } from '@/lib/api/erros';
 import type { MetacognicaoSaida } from '@/lib/api/tipos';
 
-export function FormularioMetacognicao({ secaoId }: { secaoId: string }) {
+const CONFIANCA_PADRAO = 50;
+
+export function FormularioMetacognicao({
+  secaoId,
+  temQuestaoConcluida,
+}: {
+  secaoId: string;
+  temQuestaoConcluida: boolean;
+}) {
   const [oQueAprendi, setOQueAprendi] = useState('');
   const [oQueDuvido, setOQueDuvido] = useState('');
-  const [confianca, setConfianca] = useState(50);
+  const [confianca, setConfianca] = useState(CONFIANCA_PADRAO);
+  // Item 3.12: o controle não "começa" num valor — só conta como preenchido
+  // depois que o aluno de fato mexeu nele.
+  const [confiancaTocada, setConfiancaTocada] = useState(false);
+  const [confirmandoSemQuestoes, setConfirmandoSemQuestoes] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
   const [resultado, setResultado] = useState<MetacognicaoSaida | null>(null);
@@ -41,6 +61,15 @@ export function FormularioMetacognicao({ secaoId }: { secaoId: string }) {
     } finally {
       setEnviando(false);
     }
+  }
+
+  function aoClicarRegistrar() {
+    // Item 3.1/3.6: o servidor não bloqueia — só confirma antes, sem exame prévio.
+    if (!temQuestaoConcluida) {
+      setConfirmandoSemQuestoes(true);
+      return;
+    }
+    void registrar();
   }
 
   return (
@@ -74,14 +103,18 @@ export function FormularioMetacognicao({ secaoId }: { secaoId: string }) {
       <div className="flex flex-col gap-2">
         <div className="flex items-center justify-between">
           <p className="text-sm font-medium">Nível de confiança</p>
-          <p className="text-sm text-muted-foreground">{confianca}%</p>
+          <p className="text-sm text-muted-foreground">{confiancaTocada ? `${confianca}%` : 'Arraste para indicar'}</p>
         </div>
         <Slider
           value={[confianca]}
-          onValueChange={(valores) => setConfianca(Array.isArray(valores) ? valores[0] : valores)}
+          onValueChange={(valores) => {
+            setConfianca(Array.isArray(valores) ? valores[0] : valores);
+            setConfiancaTocada(true);
+          }}
           min={0}
           max={100}
           disabled={registrado || enviando}
+          aria-label="Nível de confiança"
         />
         <div className="flex justify-between text-xs text-muted-foreground">
           <span>Inseguro</span>
@@ -93,8 +126,8 @@ export function FormularioMetacognicao({ secaoId }: { secaoId: string }) {
 
       <Button
         type="button"
-        onClick={registrar}
-        disabled={registrado || enviando || !oQueAprendi.trim() || !oQueDuvido.trim()}
+        onClick={aoClicarRegistrar}
+        disabled={registrado || enviando || !oQueAprendi.trim() || !oQueDuvido.trim() || !confiancaTocada}
         className="self-end"
       >
         {registrado ? 'Registrado' : enviando ? 'Registrando…' : 'Registrar'}
@@ -113,6 +146,44 @@ export function FormularioMetacognicao({ secaoId }: { secaoId: string }) {
           <BotaoReporte alvoTipo="metacognicao" alvoId={resultado.id} />
         </div>
       )}
+
+      {/* Item 3.1/3.6: nem elogio nem silêncio quando não há base de comparação — uma confirmação neutra. */}
+      {resultado?.semDadosDeComparacao && (
+        <div className="rounded-lg border-l-2 border-border bg-muted px-4 py-3 text-sm text-muted-foreground">
+          Registrado. Ainda não há questões suficientes concluídas nesta seção para comparar com o que você disse
+          que aprendeu
+          {typeof resultado.questoesFaltando === 'number' && resultado.questoesFaltando > 0
+            ? ` — faltam ${resultado.questoesFaltando}.`
+            : '.'}
+        </div>
+      )}
+
+      <Dialog open={confirmandoSemQuestoes} onOpenChange={setConfirmandoSemQuestoes}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Você ainda não fez as questões</DialogTitle>
+            <DialogDescription>
+              Fazer as questões desta seção antes ajuda a comparar o que você acha que aprendeu com o que
+              efetivamente demonstrou. Quer fazer agora?
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                setConfirmandoSemQuestoes(false);
+                void registrar();
+              }}
+            >
+              Registrar mesmo assim
+            </Button>
+            <Button type="button" render={<a href={`/ler/${secaoId}`} />}>
+              Fazer agora
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

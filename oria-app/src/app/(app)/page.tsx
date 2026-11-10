@@ -46,7 +46,7 @@ export default async function Home() {
             <h1 className="text-2xl font-bold md:text-3xl">Olá, {usuario.nome}</h1>
             <p className="mt-1 opacity-90">Retome a leitura e elabore o que compreendeu.</p>
           </div>
-          <BotaoContinuarLeitura destaque />
+          <BotaoContinuarLeitura destaque ultimaSecaoLida={progresso.ultimaSecaoLida ?? null} />
         </div>
       </div>
 

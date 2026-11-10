@@ -27,7 +27,8 @@ export function BotaoGerarFichamento({ secaoId, rotulo, trechoCfi, trechoTexto, 
     setErro(null);
 
     try {
-      const resposta = await fetch(`/api/secoes/${secaoId}/fichamento`, {
+      // Assíncrono (item 2.5): não prende a tela — a página do fichamento acompanha o status.
+      const resposta = await fetch(`/api/secoes/${secaoId}/fichamento/assincrono`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(trechoCfi && trechoTexto ? { trechoCfi, trechoTexto } : {}),
@@ -55,11 +56,6 @@ export function BotaoGerarFichamento({ secaoId, rotulo, trechoCfi, trechoTexto, 
         {gerando && <Loader2 className="animate-spin" />}
         {gerando ? 'Gerando…' : rotulo}
       </Button>
-      {gerando && (
-        <p className="text-xs text-muted-foreground">
-          Pode levar até um minuto e meio na primeira vez — depois fica salvo.
-        </p>
-      )}
       {erro && <p className="text-xs text-destructive">{erro}</p>}
     </div>
   );

@@ -21,6 +21,11 @@ function NoSumario({ no, ativoId }: { no: SumarioNo; ativoId?: string }) {
     return (
       <Link
         href={`/ler/${no.id}`}
+        // Vários desses links ficam visíveis ao mesmo tempo na árvore (um por
+        // seção-folha), e o prefetch automático de todos eles concorrendo
+        // junto com o painel de chat (client component montado condicionalmente
+        // por matchMedia) se mostrou instável em teste — ver `ler/[secaoId]/page.tsx`.
+        prefetch={false}
         aria-current={no.id === ativoId ? 'page' : undefined}
         className={cn(
           'flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted',

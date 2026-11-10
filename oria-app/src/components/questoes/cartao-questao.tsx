@@ -4,13 +4,28 @@ import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
 import { enfileirarEvento } from '@/lib/telemetria/fila';
 import { obterTentativaLocal, salvarTentativaLocal } from '@/lib/questoes/tentativa-local';
+import { ehRetryable } from '@/lib/api/erros';
 import { TrilhaPassos } from './trilha-passos';
 import { FormularioPasso } from './formulario-passo';
 import type { TentativaSaida } from '@/lib/api/tipos';
 
 type Questao = { id: string; ordem: number; enunciado: string; conceitos: Array<{ id: string; nome: string }> };
+type ErroPasso = { mensagem: string; retryable: boolean };
+
+async function lerErro(resposta: Response): Promise<ErroPasso> {
+  const corpo = await resposta.json();
+  return { mensagem: Array.isArray(corpo.message) ? corpo.message.join(' ') : corpo.message, retryable: ehRetryable(corpo) };
+}
 
 /**
  * Os cinco estados de UI_RULES.md, seção 3.1, derivados sempre da resposta
@@ -18,13 +33,24 @@ type Questao = { id: string; ordem: number; enunciado: string; conceitos: Array<
  * tentativa, o `passos.at(-1).tipo` (ou `estado === 'resolvida'`) decide o
  * resto. Nenhum desses estados usa cor, ícone ou texto de acerto/erro.
  */
-export function CartaoQuestao({ questao, sectionId }: { questao: Questao; sectionId: string }) {
+export function CartaoQuestao({
+  questao,
+  sectionId,
+  numeroQuestao,
+}: {
+  questao: Questao;
+  sectionId: string;
+  numeroQuestao: number;
+}) {
   const [carregando, setCarregando] = useState(true);
   const [tentativa, setTentativa] = useState<TentativaSaida | null>(null);
   const [respostaInicial, setRespostaInicial] = useState<string | null>(null);
   const [campo, setCampo] = useState('');
   const [enviando, setEnviando] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
+  const [erro, setErro] = useState<ErroPasso | null>(null);
+  const [confirmandoDesistir, setConfirmandoDesistir] = useState(false);
+
+  const idEnunciado = `enunciado-questao-${questao.id}`;
 
   // Recarregar no meio do fluxo: busca a tentativa lembrada localmente (IMPLEMENTATION.md, Fase 7, critério 5).
   useEffect(() => {
@@ -55,8 +81,7 @@ export function CartaoQuestao({ questao, sectionId }: { questao: Questao; sectio
         body: JSON.stringify({ resposta }),
       });
       if (!resp.ok) {
-        const corpo = await resp.json();
-        setErro(Array.isArray(corpo.message) ? corpo.message.join(' ') : corpo.message);
+        setErro(await lerErro(resp));
         return;
       }
       const nova = (await resp.json()) as TentativaSaida;
@@ -70,7 +95,7 @@ export function CartaoQuestao({ questao, sectionId }: { questao: Questao; sectio
     }
   }
 
-  async function enviarPasso(corpo: { tipo: string; conteudo?: string }, evento: 'respondeu' | 'pediu_dica' | null) {
+  async function enviarPasso(corpo: { tipo: string; conteudo?: string }) {
     if (!tentativa) return;
     setEnviando(true);
     setErro(null);
@@ -81,14 +106,15 @@ export function CartaoQuestao({ questao, sectionId }: { questao: Questao; sectio
         body: JSON.stringify(corpo),
       });
       if (!resp.ok) {
-        const erroCorpo = await resp.json();
-        setErro(Array.isArray(erroCorpo.message) ? erroCorpo.message.join(' ') : erroCorpo.message);
+        setErro(await lerErro(resp));
         return;
       }
       const atualizada = (await resp.json()) as TentativaSaida;
       setTentativa(atualizada);
       setCampo('');
-      if (evento) enfileirarEvento(evento, sectionId, { questaoId: questao.id, tentativaId: tentativa.id });
+      if (corpo.tipo === 'justificativa_aluno') {
+        enfileirarEvento('respondeu', sectionId, { questaoId: questao.id, tentativaId: tentativa.id });
+      }
     } finally {
       setEnviando(false);
     }
@@ -96,14 +122,18 @@ export function CartaoQuestao({ questao, sectionId }: { questao: Questao; sectio
 
   async function desistir() {
     if (!tentativa) return;
+    setConfirmandoDesistir(false);
     setEnviando(true);
+    setErro(null);
     try {
       const resp = await fetch(`/api/tentativas/${tentativa.id}/desistir`, { method: 'POST' });
-      if (resp.ok) {
-        const atualizada = (await resp.json()) as TentativaSaida;
-        setTentativa(atualizada);
-        enfileirarEvento('desistiu', sectionId, { questaoId: questao.id, tentativaId: tentativa.id });
+      if (!resp.ok) {
+        setErro(await lerErro(resp));
+        return;
       }
+      const atualizada = (await resp.json()) as TentativaSaida;
+      setTentativa(atualizada);
+      enfileirarEvento('desistiu', sectionId, { questaoId: questao.id, tentativaId: tentativa.id });
     } finally {
       setEnviando(false);
     }
@@ -112,7 +142,9 @@ export function CartaoQuestao({ questao, sectionId }: { questao: Questao; sectio
   return (
     <Card data-testid={`cartao-questao-${questao.id}`}>
       <CardHeader>
-        <CardTitle className="text-base font-normal">{questao.enunciado}</CardTitle>
+        <CardTitle id={idEnunciado} className="text-base font-normal">
+          {questao.enunciado}
+        </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {carregando ? (
@@ -121,16 +153,24 @@ export function CartaoQuestao({ questao, sectionId }: { questao: Questao; sectio
           // Estado 1 — questão aberta
           <>
             <Textarea
-              aria-label="Sua resposta"
+              aria-label={`Sua resposta à questão ${numeroQuestao}`}
+              aria-describedby={idEnunciado}
               value={campo}
               onChange={(evento) => setCampo(evento.target.value)}
               placeholder="Escreva sua resposta…"
               rows={3}
               disabled={enviando}
             />
-            {erro && <p className="text-sm text-destructive">{erro}</p>}
+            {erro && (
+              <div className="flex flex-col gap-1">
+                <p className="text-sm text-destructive">{erro.mensagem}</p>
+                {!erro.retryable && (
+                  <p className="text-xs text-muted-foreground">Tentar de novo não vai mudar o resultado — reescreva sua resposta.</p>
+                )}
+              </div>
+            )}
             <Button type="button" onClick={responder} disabled={!campo.trim() || enviando} className="self-end">
-              Responder
+              {erro?.retryable ? 'Tentar de novo' : 'Responder'}
             </Button>
           </>
         ) : (
@@ -152,19 +192,37 @@ export function CartaoQuestao({ questao, sectionId }: { questao: Questao; sectio
               <FormularioPasso
                 tentativa={tentativa}
                 sectionId={sectionId}
+                numeroQuestao={numeroQuestao}
+                idEnunciado={idEnunciado}
                 campo={campo}
                 setCampo={setCampo}
                 enviando={enviando}
                 erro={erro}
-                onEnviar={() => enviarPasso({ tipo: 'justificativa_aluno', conteudo: campo.trim() }, 'respondeu')}
-                onPedirDica={() => enviarPasso({ tipo: 'justificativa_aluno', conteudo: campo.trim() }, 'pediu_dica')}
-                onVerResolucao={() => enviarPasso({ tipo: 'resolucao' }, null)}
-                onDesistir={desistir}
+                onEnviar={() => enviarPasso({ tipo: 'justificativa_aluno', conteudo: campo.trim() })}
+                onVerResolucao={() => enviarPasso({ tipo: 'resolucao' })}
+                onDesistir={() => setConfirmandoDesistir(true)}
               />
             )}
           </>
         )}
       </CardContent>
+
+      <Dialog open={confirmandoDesistir} onOpenChange={setConfirmandoDesistir}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Desistir desta questão?</DialogTitle>
+            <DialogDescription>A trilha de passos fica registrada, mas você não poderá continuar respondendo.</DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setConfirmandoDesistir(false)}>
+              Continuar tentando
+            </Button>
+            <Button type="button" variant="destructive" onClick={desistir}>
+              Desistir
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

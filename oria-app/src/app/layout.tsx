@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/providers/theme-provider";
 import { QueryProvider } from "@/components/providers/query-provider";
+import { ToastViewport } from "@/components/providers/toast-viewport";
 import "./globals.css";
 
 const geistMono = Geist_Mono({
@@ -20,6 +21,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <body className="h-full flex flex-col">
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <QueryProvider>{children}</QueryProvider>
+          <ToastViewport />
         </ThemeProvider>
       </body>
     </html>

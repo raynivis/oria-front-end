@@ -1,19 +1,47 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { enfileirarEvento } from '@/lib/telemetria/fila';
-import { destacarCitacaoNoTexto } from '@/lib/chat/destacar-citacao';
+import { ancorarTrechoNoTexto, urlComDestaque } from '@/lib/leitor/ancoragem';
 import { usePerguntaTrecho } from '@/lib/chat/contexto-pergunta-trecho';
+import { ATALHOS_CHAT } from '@/lib/chat/atalhos';
 import { BolhaMensagem } from './bolha-mensagem';
 import type { Citacao, Mensagem } from './tipos';
-import type { EventoChat } from '@/lib/api/tipos';
+import type { EventoChat, MensagemHistoricoSaida } from '@/lib/api/tipos';
 
 const MAXIMO_CITACOES = 3;
 
-export function PainelChat({ sessaoId, secaoId }: { sessaoId: string; secaoId: string }) {
-  const [mensagens, setMensagens] = useState<Mensagem[]>([]);
+function historicoParaMensagens(historico: MensagemHistoricoSaida[]): Mensagem[] {
+  return historico.map((m) =>
+    m.papel === 'aluno'
+      ? { id: m.id, papel: 'aluno', conteudo: m.conteudo }
+      : {
+          id: m.id,
+          papel: 'tutora',
+          conteudo: m.conteudo,
+          citacoes: m.citacoes ?? [],
+          encontrouBase: m.encontrouBase,
+          erro: null,
+          emAndamento: false,
+        },
+  );
+}
+
+export function PainelChat({
+  sessaoId,
+  secaoId,
+  historicoInicial = [],
+}: {
+  sessaoId: string;
+  secaoId: string;
+  historicoInicial?: MensagemHistoricoSaida[];
+}) {
+  const router = useRouter();
+  const [mensagens, setMensagens] = useState<Mensagem[]>(() => historicoParaMensagens(historicoInicial));
   const [rascunho, setRascunho] = useState('');
   const [enviando, setEnviando] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
@@ -44,7 +72,16 @@ export function PainelChat({ sessaoId, secaoId }: { sessaoId: string; secaoId: s
     setMensagens((atual) => [
       ...atual,
       { id: idAluno, papel: 'aluno', conteudo },
-      { id: idTutora, papel: 'tutora', conteudo: '', citacoes: [], encontrouBase: null, erro: null, emAndamento: true },
+      {
+        id: idTutora,
+        papel: 'tutora',
+        conteudo: '',
+        citacoes: [],
+        encontrouBase: null,
+        erro: null,
+        emAndamento: true,
+        perguntaOriginal: conteudo,
+      },
     ]);
 
     function atualizarTutora(atualizar: (mensagem: Extract<Mensagem, { papel: 'tutora' }>) => Mensagem) {
@@ -92,7 +129,7 @@ export function PainelChat({ sessaoId, secaoId }: { sessaoId: string; secaoId: s
           } else if (evento.tipo === 'citacao') {
             atualizarTutora((m) => (m.citacoes.length >= MAXIMO_CITACOES ? m : { ...m, citacoes: [...m.citacoes, evento] }));
           } else if (evento.tipo === 'fim') {
-            atualizarTutora((m) => ({ ...m, encontrouBase: evento.encontrouBase, emAndamento: false }));
+            atualizarTutora((m) => ({ ...m, encontrouBase: evento.encontrouBase, sugestoes: evento.sugestoes, emAndamento: false }));
           } else if (evento.tipo === 'erro') {
             atualizarTutora((m) => ({ ...m, erro: evento.mensagem, emAndamento: false }));
           }
@@ -100,7 +137,8 @@ export function PainelChat({ sessaoId, secaoId }: { sessaoId: string; secaoId: s
       }
     } catch (erro) {
       if (erro instanceof DOMException && erro.name === 'AbortError') {
-        return; // saiu da tela no meio do stream — cancelamento intencional, não é erro.
+        atualizarTutora((m) => ({ ...m, emAndamento: false }));
+        return;
       }
       atualizarTutora((m) => ({
         ...m,
@@ -110,6 +148,10 @@ export function PainelChat({ sessaoId, secaoId }: { sessaoId: string; secaoId: s
     } finally {
       setEnviando(false);
     }
+  }
+
+  function pararGeracao() {
+    abortRef.current?.abort();
   }
 
   // Pergunta disparada a partir de um trecho selecionado no texto (`TextoSecao`).
@@ -123,7 +165,25 @@ export function PainelChat({ sessaoId, secaoId }: { sessaoId: string; secaoId: s
 
   function aoClicarCitacao(citacao: Citacao) {
     enfileirarEvento('clicou_citacao', secaoId, { chunkId: citacao.chunkId });
-    destacarCitacaoNoTexto(citacao.trecho);
+    // O backend agora pode citar seção diferente da aberta (item 1.11) — navega primeiro, se preciso.
+    if (citacao.sectionId && citacao.sectionId !== secaoId) {
+      router.push(urlComDestaque(citacao.sectionId, citacao.trecho));
+      return;
+    }
+    if (!ancorarTrechoNoTexto(citacao.trecho)) {
+      enfileirarEvento('clicou_citacao', secaoId, { chunkId: citacao.chunkId, naoResolvido: true });
+    }
+  }
+
+  function aoClicarSugestao(mensagem: Extract<Mensagem, { papel: 'tutora' }>, indice: number) {
+    const sugestao = mensagem.sugestoes?.[indice];
+    if (!sugestao) return;
+    if (sugestao.tipo === 'abrir_glossario' && sugestao.sectionId) {
+      router.push(`/ler/${sugestao.sectionId}`);
+    } else if (sugestao.tipo === 'buscar_outras_secoes') {
+      router.push('/biblioteca');
+    }
+    // 'inferir_pelo_contexto': só orienta — o aluno já tem o atalho de vocabulário ao selecionar texto.
   }
 
   return (
@@ -137,9 +197,34 @@ export function PainelChat({ sessaoId, secaoId }: { sessaoId: string; secaoId: s
           </p>
         )}
         {mensagens.map((mensagem) => (
-          <BolhaMensagem key={mensagem.id} mensagem={mensagem} onClicarCitacao={aoClicarCitacao} />
+          <BolhaMensagem
+            key={mensagem.id}
+            mensagem={mensagem}
+            onClicarCitacao={aoClicarCitacao}
+            onClicarSugestao={(indice) => aoClicarSugestao(mensagem as Extract<Mensagem, { papel: 'tutora' }>, indice)}
+            onTentarDeNovo={() => {
+              if (mensagem.papel === 'tutora' && mensagem.perguntaOriginal) void enviarMensagem(mensagem.perguntaOriginal);
+            }}
+          />
         ))}
       </div>
+
+      {ATALHOS_CHAT.length > 0 && (
+        <div className="flex flex-wrap gap-1">
+          {ATALHOS_CHAT.map((atalho) => (
+            <Button
+              key={atalho}
+              type="button"
+              variant="outline"
+              size="xs"
+              disabled={enviando}
+              onClick={() => void enviarMensagem(atalho)}
+            >
+              {atalho}
+            </Button>
+          ))}
+        </div>
+      )}
 
       <form
         className="flex items-end gap-2"
@@ -163,9 +248,16 @@ export function PainelChat({ sessaoId, secaoId }: { sessaoId: string; secaoId: s
           disabled={enviando}
           className="min-h-0 resize-none"
         />
-        <Button type="submit" size="sm" disabled={enviando || !rascunho.trim()}>
-          Enviar
-        </Button>
+        {enviando ? (
+          <Button type="button" size="sm" variant="outline" onClick={pararGeracao}>
+            <Square className="size-3" />
+            Parar
+          </Button>
+        ) : (
+          <Button type="submit" size="sm" disabled={!rascunho.trim()}>
+            Enviar
+          </Button>
+        )}
       </form>
     </div>
   );

@@ -39,7 +39,7 @@ export function BotaoFazerQuestoes({ secaoId }: { secaoId: string }) {
       </Button>
       {gerando && (
         <p className="text-xs text-muted-foreground">
-          Pode levar até um minuto e meio na primeira vez — depois fica salvo.
+          Pode levar até três minutos na primeira vez — depois fica salvo.
         </p>
       )}
       {erro && <p className="text-xs text-destructive">{erro}</p>}

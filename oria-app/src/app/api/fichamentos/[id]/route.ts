@@ -5,6 +5,21 @@ import type { FichamentoSaida } from '@/lib/api/tipos';
 
 type Contexto = { params: Promise<{ id: string }> };
 
+/** Usado pelo acompanhamento de `statusGeracao` (item 2.5) — poll do cliente. */
+export async function GET(_request: Request, { params }: Contexto) {
+  const { id } = await params;
+
+  try {
+    const fichamento = await chamarApi<FichamentoSaida>(`/fichamentos/${id}`);
+    return NextResponse.json(fichamento);
+  } catch (erro) {
+    if (erro instanceof ErroApiCliente) {
+      return NextResponse.json(erro.corpo, { status: erro.statusCode });
+    }
+    throw erro;
+  }
+}
+
 export async function PATCH(request: Request, { params }: Contexto) {
   const { id } = await params;
   const corpo = (await request.json()) as { conteudo: string };

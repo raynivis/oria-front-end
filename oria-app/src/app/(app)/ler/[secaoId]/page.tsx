@@ -3,7 +3,7 @@ import { notFound } from 'next/navigation';
 import type { Metadata } from 'next';
 import { chamarApi, redirecionarSeSessaoExpirada } from '@/lib/api/cliente';
 import { ErroApiCliente } from '@/lib/api/erros';
-import type { SecaoSaida, SumarioNo } from '@/lib/api/tipos';
+import type { ProgressoSaida, SecaoSaida, SumarioNo, HistoricoChatSaida } from '@/lib/api/tipos';
 import { encontrarCapituloAncestral } from '@/lib/leitor/sumario';
 import { SumarioArvore } from '@/components/biblioteca/sumario-arvore';
 import { TextoSecao } from '@/components/leitor/texto-secao';
@@ -21,14 +21,32 @@ import type { SessaoSaida } from '@/lib/api/tipos';
 
 type ParametrosPagina = { params: Promise<{ secaoId: string }> };
 
-async function buscarDadosOu404(secaoId: string): Promise<{ secao: SecaoSaida; sumario: SumarioNo[]; sessao: SessaoSaida }> {
+async function buscarDadosOu404(secaoId: string): Promise<{
+  secao: SecaoSaida;
+  sumario: SumarioNo[];
+  sessao: SessaoSaida;
+  progresso: ProgressoSaida;
+  historico: HistoricoChatSaida['mensagens'];
+}> {
   try {
-    const [secao, sessao] = await Promise.all([
+    const [secao, sessao, progresso] = await Promise.all([
       chamarApi<SecaoSaida>(`/secoes/${secaoId}`),
       obterOuCriarSessao(secaoId),
+      chamarApi<ProgressoSaida>('/me/progresso'),
     ]);
     const sumario = await chamarApi<SumarioNo[]>(`/livros/${secao.livro.id}/sumario`);
-    return { secao, sumario, sessao };
+
+    // Histórico do chat (item 1.8): endpoint aditivo — numa API antiga sem ele,
+    // a tela simplesmente começa sem histórico, em vez de quebrar.
+    let historico: HistoricoChatSaida['mensagens'] = [];
+    try {
+      const resultado = await chamarApi<HistoricoChatSaida>(`/me/secoes/${secaoId}/historico`);
+      historico = resultado.mensagens ?? [];
+    } catch {
+      historico = [];
+    }
+
+    return { secao, sumario, sessao, progresso, historico };
   } catch (erro) {
     if (erro instanceof ErroApiCliente && erro.statusCode === 404) {
       notFound();
@@ -46,8 +64,46 @@ export async function generateMetadata({ params }: ParametrosPagina): Promise<Me
 
 export default async function PaginaLeitor({ params }: ParametrosPagina) {
   const { secaoId } = await params;
-  const { secao, sumario, sessao } = await buscarDadosOu404(secaoId);
+  const { secao, sumario, sessao, progresso, historico } = await buscarDadosOu404(secaoId);
   const capitulo = encontrarCapituloAncestral(sumario, secaoId);
+
+  const barraAcoes = (
+    <div className="sticky top-0 z-10 border-b border-border bg-background/95 px-6 py-4 backdrop-blur supports-backdrop-filter:bg-background/80">
+      <div className="mx-auto max-w-[68ch]">
+        {capitulo && <p className="text-sm text-muted-foreground">{capitulo}</p>}
+        <h1 className="mb-2 text-2xl font-semibold">{secao.titulo}</h1>
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div className="flex flex-col gap-1">
+            {/*
+              prefetch=false: esta barra fica fixa (sticky) e visível o tempo
+              todo enquanto o aluno lê e conversa com a tutora. O prefetch
+              automático do App Router para um link sempre visível na tela
+              disparava revalidações de fundo que derrubavam o estado do
+              PainelChatDesktop (reproduzido: o efeito de montagem do chat
+              limpava segundos depois de montar, assim que o prefetch de
+              /panorama e /metacognicao completava — sem isso, nunca).
+            */}
+            <Link href={`/ler/${secaoId}/panorama`} prefetch={false} className="text-sm font-medium text-primary hover:underline">
+              Ver panorama da seção
+            </Link>
+            <ContadorSecoes sumario={sumario} abertas={progresso.secoesAbertas} />
+          </div>
+          {/* Sempre acessíveis, mesmo rolando o texto (item 1.6) */}
+          <div className="flex flex-wrap items-center gap-2">
+            <BotaoFazerQuestoes secaoId={secaoId} />
+            <BotaoGerarFichamento secaoId={secaoId} rotulo="Gerar fichamento desta seção" />
+            <Link
+              href={`/metacognicao/${secaoId}`}
+              prefetch={false}
+              className="text-sm font-medium text-primary hover:underline"
+            >
+              Fechar esta seção
+            </Link>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <GuardaPanorama secaoId={secaoId}>
@@ -55,7 +111,7 @@ export default async function PaginaLeitor({ params }: ParametrosPagina) {
         <div className="flex h-full flex-1 flex-col overflow-hidden">
           <BarraMobile
             sumario={<SumarioArvore nos={sumario} ativoId={secaoId} />}
-            tutora={<PainelChat sessaoId={sessao.id} secaoId={secaoId} />}
+            tutora={<PainelChat sessaoId={sessao.id} secaoId={secaoId} historicoInicial={historico} />}
           />
 
           <div className="flex flex-1 overflow-hidden">
@@ -64,34 +120,27 @@ export default async function PaginaLeitor({ params }: ParametrosPagina) {
             </aside>
 
             <InstrumentacaoLeitura secaoId={secaoId}>
-              <div className="mx-auto max-w-[68ch]">
-                {capitulo && <p className="text-sm text-muted-foreground">{capitulo}</p>}
-                <h1 className="mb-2 text-2xl font-semibold">{secao.titulo}</h1>
-                <div className="flex items-center justify-between gap-4">
-                  <div className="flex flex-col gap-1">
-                    <Link href={`/ler/${secaoId}/panorama`} className="text-sm font-medium text-primary hover:underline">
-                      Ver panorama da seção
-                    </Link>
-                    <ContadorSecoes sumario={sumario} />
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <BotaoFazerQuestoes secaoId={secaoId} />
-                    <BotaoGerarFichamento secaoId={secaoId} rotulo="Gerar fichamento desta seção" />
-                  </div>
-                </div>
-              </div>
+              {barraAcoes}
 
-              <div className="mt-6">
+              <div className="mx-auto mt-6 max-w-[68ch]">
                 <TextoSecao texto={secao.textoCompleto} secaoId={secaoId} />
               </div>
 
-              <div className="mx-auto mt-6 max-w-[68ch]">
-                <Link href={`/metacognicao/${secaoId}`} className="text-sm font-medium text-primary hover:underline">
-                  Fechar esta seção →
-                </Link>
+              <div className="mx-auto mt-8 max-w-[68ch] rounded-lg border border-border bg-muted/40 p-4">
+                <p className="mb-2 text-sm font-medium">Antes de seguir em frente</p>
+                <ol className="flex flex-col gap-1.5 text-sm text-muted-foreground">
+                  <li>1. Faça as questões desta seção, com o botão &ldquo;Fazer questões desta seção&rdquo; acima.</li>
+                  <li>
+                    2. Depois,{' '}
+                    <Link href={`/metacognicao/${secaoId}`} prefetch={false} className="font-medium text-primary hover:underline">
+                      feche esta seção
+                    </Link>{' '}
+                    registrando o que aprendeu.
+                  </li>
+                </ol>
               </div>
 
-              <nav className="mx-auto mt-10 flex max-w-[68ch] justify-between text-sm">
+              <nav className="mx-auto mt-10 flex max-w-[68ch] justify-between pb-8 text-sm">
                 {secao.anterior ? (
                   <Link href={`/ler/${secao.anterior.id}`} className="hover:underline">
                     ← {secao.anterior.titulo}
@@ -110,7 +159,7 @@ export default async function PaginaLeitor({ params }: ParametrosPagina) {
             </InstrumentacaoLeitura>
 
             <aside className="hidden w-[360px] shrink-0 overflow-y-auto border-l border-border p-4 lg:block">
-              <PainelChatDesktop sessaoId={sessao.id} secaoId={secaoId} />
+              <PainelChatDesktop sessaoId={sessao.id} secaoId={secaoId} historicoInicial={historico} />
             </aside>
           </div>
         </div>

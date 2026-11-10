@@ -3,7 +3,6 @@
 import { useEffect, useRef, type ReactNode } from 'react';
 import { enfileirarEvento } from '@/lib/telemetria/fila';
 import { marcarSecaoAberta } from '@/lib/telemetria/secoes-abertas';
-import { marcarUltimaSecao } from '@/lib/telemetria/ultima-secao';
 
 const LIMIAR_ROLAGEM_PX = 40;
 
@@ -18,7 +17,6 @@ export function InstrumentacaoLeitura({ secaoId, children }: { secaoId: string; 
   useEffect(() => {
     enfileirarEvento('abriu', secaoId);
     marcarSecaoAberta(secaoId);
-    marcarUltimaSecao(secaoId);
 
     let fechouEnviado = false;
     function enviarFechouUmaVez() {

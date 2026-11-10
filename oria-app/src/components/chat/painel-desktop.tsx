@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { PainelChat } from './painel';
+import type { MensagemHistoricoSaida } from '@/lib/api/tipos';
 
 /**
  * Só monta o painel fixo (≥1024px). Abaixo disso o chat vive na gaveta de
@@ -9,7 +10,11 @@ import { PainelChat } from './painel';
  * senão uma pergunta disparada por `ProvedorPerguntaTrecho` seria enviada em
  * dobro.
  */
-export function PainelChatDesktop(props: { sessaoId: string; secaoId: string }) {
+export function PainelChatDesktop(props: {
+  sessaoId: string;
+  secaoId: string;
+  historicoInicial?: MensagemHistoricoSaida[];
+}) {
   const [grande, setGrande] = useState(false);
 
   useEffect(() => {
